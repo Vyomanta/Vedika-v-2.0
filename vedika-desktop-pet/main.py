@@ -591,8 +591,10 @@ class DesktopPetApp(QObject):
         # Initialize User Profile Manager
         self.user_profile = UserProfileManager()
 
-        # Verify System Permissions & Vedika Account Authentication on Startup
-        if not self.user_profile.is_authenticated():
+        # Verify System Permissions & Vedika Account Authentication on Startup (Disabled for instant desktop launch)
+        # Login is always accessible on-demand via Mascot right-click menu -> 'Account & Login'
+        show_startup_login = "--show-login" in sys.argv
+        if show_startup_login and not self.user_profile.is_authenticated():
             try:
                 from ui.login_dialog import VedikaSetupLoginDialog
                 setup_dlg = VedikaSetupLoginDialog(self.user_profile, base_url=self.get_vyomanta_base_url())

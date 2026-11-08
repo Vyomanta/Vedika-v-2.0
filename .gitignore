@@ -95,3 +95,6 @@ scratch/
 *.mp4
 /user_profile.json
 responsive-test-result/
+
+vedika-2.0/
+!frontend/database/*.sql

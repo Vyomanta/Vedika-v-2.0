@@ -150,7 +150,7 @@ class UserProfileManager:
         """Generates a dynamic, context-aware greeting and conversation starter based on time of day,
         user stage, field of study, and hobbies."""
         user = self.profile.get("user", {})
-        name = user.get("name", "there")
+        name = user.get("name") or "there"
         stage = user.get("stage", "College")
         field = user.get("field_of_study", "your studies")
         hobbies = user.get("hobbies", ["learning"])
@@ -228,7 +228,7 @@ class UserProfileManager:
 
         return (
             f"\n\n[USER PROFILE CONTEXT]\n"
-            f"- User Name: {user.get('name', 'Friend')}\n"
+            f"- User Name: {user.get('name') or 'Friend'}\n"
             f"- Stage/Level: {user.get('stage', 'College')} student\n"
             f"- Field of Study: {user.get('field_of_study', 'Computer Science')}\n"
             f"- Key Hobbies: {', '.join(user.get('hobbies', []))}\n"
