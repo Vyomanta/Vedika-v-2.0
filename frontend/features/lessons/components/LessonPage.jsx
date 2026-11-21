@@ -32,7 +32,7 @@ import '@/features/lessons/styles/LessonPage.css';
 import {formatTimestamp,extractYoutubeId,renderCleanFormattedText,renderFormattedChatMessage} from '@/features/lessons/components/features-lessons-components-LessonPage.support.jsx';
 import {useLessonPageModel} from '@/features/lessons/hooks/features-lessons-components-LessonPage.jsx';
 export default function LessonPage({ lesson, completed = {}, onComplete }) {
-const {router,isMobile,isTablet,isStackedLayout,next,setNext,isPlaygroundOpen,setIsPlaygroundOpen,isPdfViewerOpen,setIsPdfViewerOpen,selectedPdfResource,setSelectedPdfResource,videoSeekTime,setVideoSeekTime,videoCurrentTime,setVideoCurrentTime,aiExplainerData,setAiExplainerData,explainerLoading,setExplainerLoading,activeCompanionTab,setActiveCompanionTab,isOverviewModalOpen,setIsOverviewModalOpen,isExpanded,setIsExpanded,isSummaryExpanded,setIsSummaryExpanded,currentTab,panelColor,notesTabColor,chatQuestion,setChatQuestion,chatHistory,setChatHistory,chatLoading,setChatLoading,notes,setNotes,allCourseNotes,setAllCourseNotes,noteFilter,setNoteFilter,recentNoteAlert,setRecentNoteAlert,newNoteText,setNewNoteText,isPointsSaved,setIsPointsSaved,isDictating,setIsDictating,forcePause,setForcePause,recognitionRef,dictationBaseTextRef,isExplainingRef,announcements,setAnnouncements,mod,currentUser,setCurrentUser,isTabletOrSmallDesktop,rPad,aiQuiz,setAiQuiz,aiLoading,setAiLoading,aiErr,setAiErr,aiQuizIdx,setAiQuizIdx,aiQuizAns,setAiQuizAns,officialQuiz,setOfficialQuiz,officialAssignment,setOfficialAssignment,quizAttempts,setQuizAttempts,assignmentSub,setAssignmentSub,isOfficialQuizActive,setIsOfficialQuizActive,officialQuizIdx,setOfficialQuizIdx,officialQuizAnswers,setOfficialQuizAnswers,officialQuizScore,setOfficialQuizScore,submittingQuiz,setSubmittingQuiz,assignmentText,setAssignmentText,submittingAss,setSubmittingAss,assSuccessMsg,setAssSuccessMsg,isMascotConnected,setIsMascotConnected,ensureNumberedNotes,lastReportedTimeRef,handleExplainMoment,handleSaveQuickNote,handleSaveManualNote,handleDeleteNoteById,handleDownloadNote,handleDownloadAllNotes,handleToggleDictation,handleAskQuestion,handleGeneratePracticeQuiz,handleOfficialQuizSubmit,handleOfficialAssignmentSubmit}=useLessonPageModel({lesson,completed,onComplete});
+const {router,isMobile,isTablet,isStackedLayout,next,setNext,isPlaygroundOpen,setIsPlaygroundOpen,isPdfViewerOpen,setIsPdfViewerOpen,selectedPdfResource,setSelectedPdfResource,videoSeekTime,setVideoSeekTime,videoCurrentTime,setVideoCurrentTime,aiExplainerData,setAiExplainerData,explainerLoading,setExplainerLoading,activeCompanionTab,setActiveCompanionTab,isOverviewModalOpen,setIsOverviewModalOpen,isExpanded,setIsExpanded,isSummaryExpanded,setIsSummaryExpanded,currentTab,panelColor,notesTabColor,chatQuestion,setChatQuestion,chatHistory,setChatHistory,chatLoading,setChatLoading,notes,setNotes,allCourseNotes,setAllCourseNotes,noteFilter,setNoteFilter,selectedCourseFilter,setSelectedCourseFilter,selectedLessonFilter,setSelectedLessonFilter,availableCourses,availableLessons,filteredAllNotes,groupedAllNotes,recentNoteAlert,setRecentNoteAlert,newNoteText,setNewNoteText,isPointsSaved,setIsPointsSaved,isDictating,setIsDictating,forcePause,setForcePause,recognitionRef,dictationBaseTextRef,isExplainingRef,announcements,setAnnouncements,mod,currentUser,setCurrentUser,isTabletOrSmallDesktop,rPad,aiQuiz,setAiQuiz,aiLoading,setAiLoading,aiErr,setAiErr,aiQuizIdx,setAiQuizIdx,aiQuizAns,setAiQuizAns,officialQuiz,setOfficialQuiz,officialAssignment,setOfficialAssignment,quizAttempts,setQuizAttempts,assignmentSub,setAssignmentSub,isOfficialQuizActive,setIsOfficialQuizActive,officialQuizIdx,setOfficialQuizIdx,officialQuizAnswers,setOfficialQuizAnswers,officialQuizScore,setOfficialQuizScore,submittingQuiz,setSubmittingQuiz,assignmentText,setAssignmentText,submittingAss,setSubmittingAss,assSuccessMsg,setAssSuccessMsg,isMascotConnected,setIsMascotConnected,ensureNumberedNotes,lastReportedTimeRef,handleExplainMoment,handleSaveQuickNote,handleSaveManualNote,handleDeleteNoteById,handleDownloadNote,handleDownloadAllNotes,handleToggleDictation,handleAskQuestion,handleGeneratePracticeQuiz,handleOfficialQuizSubmit,handleOfficialAssignmentSubmit}=useLessonPageModel({lesson,completed,onComplete});
 return (
     <div style={featureStyleFunctions.s0({T,isStackedLayout,isMobile})}>
       <div style={featureStyleFunctions.s1({isStackedLayout})}>
@@ -467,20 +467,103 @@ return (
                               onClick={() => setNoteFilter('course')}
                               style={featureStyleFunctions.s59({noteFilter,panelColor,T})}
                             >
-                              All Course ({allCourseNotes.length || notes.length})
+                              All Notes ({allCourseNotes.length || notes.length})
                             </button>
                           </div>
 
                           {(noteFilter === 'lesson' ? notes : (allCourseNotes.length > 0 ? allCourseNotes : notes)).length > 0 && (
                             <button
                               type="button"
-                              onClick={() => handleDownloadAllNotes(noteFilter === 'lesson' ? notes : (allCourseNotes.length > 0 ? allCourseNotes : notes))}
+                              onClick={() => handleDownloadAllNotes(noteFilter === 'lesson' ? notes : (filteredAllNotes && filteredAllNotes.length > 0 ? filteredAllNotes : allCourseNotes))}
                               style={featureStyleFunctions.s60({panelColor})}
                             >
                               <Download size={12} /> Export .txt
                             </button>
                           )}
                         </div>
+
+                        {/* Course & Lesson Dropdowns for All Notes */}
+                        {noteFilter === 'course' && (
+                          <div style={{
+                            display: 'flex',
+                            gap: 8,
+                            padding: '8px 12px',
+                            background: `${panelColor}10`,
+                            borderRadius: 8,
+                            border: `1px solid ${panelColor}25`,
+                            marginBottom: 8,
+                            alignItems: 'center'
+                          }}>
+                            {/* Course Dropdown */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <label style={{ fontSize: 9.5, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Course
+                              </label>
+                              <select
+                                value={selectedCourseFilter}
+                                onChange={(e) => {
+                                  setSelectedCourseFilter(e.target.value);
+                                  setSelectedLessonFilter('all');
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '5px 8px',
+                                  borderRadius: 6,
+                                  background: T.bg || '#0F172A',
+                                  border: `1px solid ${selectedCourseFilter !== 'all' ? panelColor : (T.border || '#334155')}`,
+                                  color: T.text || '#F8FAFC',
+                                  fontSize: 11.5,
+                                  fontWeight: 600,
+                                  outline: 'none',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="all">All Courses ({allCourseNotes.length})</option>
+                                {availableCourses.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.title} ({c.count})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {/* Lesson Dropdown */}
+                            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                              <label style={{ fontSize: 9.5, fontWeight: 700, color: T.muted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                                Lesson
+                              </label>
+                              <select
+                                value={selectedLessonFilter}
+                                onChange={(e) => setSelectedLessonFilter(e.target.value)}
+                                style={{
+                                  width: '100%',
+                                  padding: '5px 8px',
+                                  borderRadius: 6,
+                                  background: T.bg || '#0F172A',
+                                  border: `1px solid ${selectedLessonFilter !== 'all' ? panelColor : (T.border || '#334155')}`,
+                                  color: T.text || '#F8FAFC',
+                                  fontSize: 11.5,
+                                  fontWeight: 600,
+                                  outline: 'none',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <option value="all">
+                                  All Lessons ({
+                                    selectedCourseFilter === 'all'
+                                      ? allCourseNotes.length
+                                      : allCourseNotes.filter(n => (n.courseId || 'general') === selectedCourseFilter).length
+                                  })
+                                </option>
+                                {availableLessons.map((l) => (
+                                  <option key={l.id} value={l.id}>
+                                    {l.title} ({l.count})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Composer */}
                         <form onSubmit={handleSaveManualNote} style={inlineStyles.s30}>
@@ -519,7 +602,9 @@ return (
                         {/* Notes List */}
                         <div style={inlineStyles.s31}>
                           {(() => {
-                            const displayedList = noteFilter === 'lesson' ? notes : (allCourseNotes.length > 0 ? allCourseNotes : notes);
+                            const displayedList = noteFilter === 'lesson'
+                              ? notes
+                              : (filteredAllNotes && filteredAllNotes.length > 0 ? filteredAllNotes : (allCourseNotes.length > 0 ? allCourseNotes : notes));
                             if (displayedList.length === 0) {
                               return (
                                 <div style={featureStyleFunctions.s65({T})}>
@@ -546,6 +631,22 @@ return (
                                       >
                                         Note #{noteNum}
                                       </span>
+                                      {noteFilter === 'course' && (n.lessonTitle || n.courseTitle) && (
+                                        <span style={{
+                                          fontSize: 9.5,
+                                          fontWeight: 600,
+                                          color: panelColor,
+                                          background: `${panelColor}15`,
+                                          padding: '2px 6px',
+                                          borderRadius: 4,
+                                          maxWidth: 140,
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis',
+                                          whiteSpace: 'nowrap'
+                                        }}>
+                                          {n.lessonTitle || n.courseTitle}
+                                        </span>
+                                      )}
                                       <button
                                         type="button"
                                         onClick={() => setVideoSeekTime(n.timestampSeconds || 0)}

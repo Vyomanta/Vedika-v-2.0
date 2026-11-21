@@ -189,6 +189,29 @@ def test_numbered_study_notes_creation_and_targeting():
     assert res4["note_number"] == 1, f"Expected Note #1 to be updated, got {res4}"
     assert "Mitochondria generate ATP" in res4["saved_note"] and "Inner membrane has cristae folds" in res4["saved_note"]
 
+    # 4. Creating and targeting Note #3 explicitly (Note #3 does not exist yet -> creates Note #3 in this lesson)
+    worker.current_turn_user_transcription = "Add to Note 3 that Golgi apparatus modifies and packages proteins"
+    res5 = worker.execute_add_study_note("Golgi apparatus modifies and packages proteins")
+    assert res5["status"] == "success"
+    assert res5["note_number"] == 3, f"Expected Note #3 to be created for this lesson, got {res5}"
+    assert "Golgi apparatus modifies and packages proteins" in res5["saved_note"]
+
+    # 5. Appending to Note #3 with Telugu voice command ("Note 3 lo...")
+    worker.current_turn_user_transcription = "Note 3 lo Telugu point add chey Golgi vesicles ni pack chesthundi"
+    res6 = worker.execute_add_study_note("Golgi vesicles ni pack chesthundi")
+    assert res6["status"] == "success"
+    assert res6["is_updated"] is True, f"Expected Note #3 to be updated, got {res6}"
+    assert res6["note_number"] == 3, f"Expected Note #3, got {res6}"
+    assert "Golgi apparatus modifies and packages proteins" in res6["saved_note"] and "Golgi vesicles ni pack chesthundi" in res6["saved_note"]
+
+    # 6. Appending to Note #3 with Hindi ordinal voice command ("Teesre note mein...")
+    worker.current_turn_user_transcription = "Teesre note mein Hindi point add karo Golgi package karta hai"
+    res7 = worker.execute_add_study_note("Golgi package karta hai")
+    assert res7["status"] == "success"
+    assert res7["is_updated"] is True, f"Expected Note #3 to be updated, got {res7}"
+    assert res7["note_number"] == 3, f"Expected Note #3, got {res7}"
+    assert "Golgi package karta hai" in res7["saved_note"]
+
     # Clean up test notes
     for n in mm.get_notebook_notes(lesson_id=test_lesson):
         mm.delete_notebook_note(int(n["id"]))

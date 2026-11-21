@@ -536,8 +536,8 @@ class MemoryManager:
     ) -> tuple:
         """
         Default behavior (create_new=True): Creates a brand new numbered note every time unless:
-        - target_note_number (> 0) is specified (appends to that specific Note #N), OR
-        - create_new is explicitly False (appends to the most recent note in this lesson/notebook).
+        - target_note_number (> 0) is specified (appends to Note #N if it exists, or creates Note #N for this lesson), OR
+        - create_new is explicitly False (appends to the most recent note in this lesson).
         Returns: (note_id, is_updated, combined_text, note_dict)
         """
         clean_text = scrub_pii(note_text.strip())
@@ -547,22 +547,16 @@ class MemoryManager:
         formatted_bullets = format_text_as_bullets(clean_text)
 
         with self._get_connection() as conn:
-            # If lesson_id is missing (e.g. voice note taken right after a generic page update), inherit active lesson context from latest note
+            # If lesson_id is missing, scope to course if available, or general notes. NEVER inherit unrelated courses!
             if not lesson_id and not lesson_title:
-                latest_cur = conn.execute("""
-                    SELECT course_id, course_title, chapter_title, lesson_id, lesson_title, video_id
-                    FROM student_notebook_notes
-                    WHERE lesson_id != '' OR lesson_title != ''
-                    ORDER BY id DESC LIMIT 1
-                """)
-                latest_ctx = latest_cur.fetchone()
-                if latest_ctx:
-                    lesson_id = lesson_id or latest_ctx["lesson_id"] or ""
-                    lesson_title = lesson_title or latest_ctx["lesson_title"] or ""
-                    course_id = course_id or latest_ctx["course_id"] or ""
-                    course_title = course_title or latest_ctx["course_title"] or ""
-                    chapter_title = chapter_title or latest_ctx["chapter_title"] or ""
-                    video_id = video_id or latest_ctx["video_id"] or ""
+                if course_id:
+                    lesson_id = f"{course_id}_general"
+                    lesson_title = f"{course_title or 'Course'} Notes"
+                else:
+                    lesson_id = "general_notes"
+                    lesson_title = "General Study Notes"
+                    course_id = "general"
+                    course_title = "General"
             row = None
             # Case 1: User explicitly specified a Note Number (e.g., "add to note 2" -> target_note_number=2)
             if target_note_number is not None and int(target_note_number) > 0:
@@ -577,7 +571,9 @@ class MemoryManager:
                     lesson_rows = cursor.fetchall()
                     if 1 <= target_num <= len(lesson_rows):
                         row = lesson_rows[target_num - 1]
-                if not row:
+                    # Note: If target_num > len(lesson_rows), row remains None so it creates Note #N in this lesson!
+                else:
+                    # Global search ONLY when lesson_id and lesson_title are both completely unassigned
                     cursor = conn.execute("""
                         SELECT id, note_text, timestamp_formatted, timestamp_seconds, course_id, course_title, chapter_title, lesson_id, lesson_title, video_id, topic, created_at
                         FROM student_notebook_notes
@@ -587,7 +583,6 @@ class MemoryManager:
                     if 1 <= target_num <= len(all_rows):
                         row = all_rows[target_num - 1]
                     elif not row:
-                        # Fallback: check if id matches target_num directly
                         cursor = conn.execute("""
                             SELECT id, note_text, timestamp_formatted, timestamp_seconds, course_id, course_title, chapter_title, lesson_id, lesson_title, video_id, topic, created_at
                             FROM student_notebook_notes
@@ -595,7 +590,7 @@ class MemoryManager:
                         """, (target_num,))
                         row = cursor.fetchone()
 
-            # Case 2: User explicitly asked to append to the same / current note (create_new=False)
+            # Case 2: User explicitly asked to append to the same / current note (create_new=False and target_note_number is None)
             elif not create_new:
                 cursor = conn.execute("""
                     SELECT id, note_text, timestamp_formatted, timestamp_seconds, course_id, course_title, chapter_title, lesson_id, lesson_title, video_id, topic, created_at
@@ -608,7 +603,7 @@ class MemoryManager:
                 """, (lesson_id or "", lesson_title or "", video_id or "", course_id or ""))
                 row = cursor.fetchone()
 
-                if not row:
+                if not row and not lesson_id and not lesson_title:
                     cursor = conn.execute("""
                         SELECT id, note_text, timestamp_formatted, timestamp_seconds, course_id, course_title, chapter_title, lesson_id, lesson_title, video_id, topic, created_at
                         FROM student_notebook_notes
@@ -622,7 +617,11 @@ class MemoryManager:
                 id_to_num = self._assign_note_numbers(conn, lesson_id=row["lesson_id"] or lesson_id, lesson_title=row["lesson_title"] or lesson_title)
                 note_num = id_to_num.get(note_id, 1)
 
-                if formatted_bullets in existing_text or clean_text in existing_text:
+                existing_lines = [l.strip().lstrip('•-* ').strip() for l in existing_text.splitlines() if l.strip()]
+                clean_lines = [l.strip().lstrip('•-* ').strip() for l in clean_text.splitlines() if l.strip()]
+                new_unique_lines = [cl for cl in clean_lines if cl and cl not in existing_lines]
+
+                if not new_unique_lines:
                     note_dict = {
                         "id": str(note_id),
                         "noteNumber": note_num,
@@ -641,7 +640,8 @@ class MemoryManager:
                     }
                     return (str(note_id), True, existing_text, note_dict)
 
-                combined = f"{existing_text}\n{formatted_bullets}" if existing_text else formatted_bullets
+                bullets_to_append = "\n".join([f"• {l}" for l in new_unique_lines])
+                combined = f"{existing_text}\n{bullets_to_append}" if existing_text else bullets_to_append
 
                 conn.execute("""
                     UPDATE student_notebook_notes
@@ -738,7 +738,7 @@ class MemoryManager:
             for idx, row in enumerate(cursor.fetchall(), start=1):
                 results.append({
                     "id": str(row["id"]),
-                    "noteNumber": id_to_num.get(row["id"], idx),
+                    "noteNumber": id_to_num.get(row["id"], 1),
                     "courseId": row["course_id"],
                     "courseTitle": row["course_title"],
                     "chapterTitle": row["chapter_title"],

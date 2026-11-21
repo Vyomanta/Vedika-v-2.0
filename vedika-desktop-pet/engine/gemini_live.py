@@ -402,22 +402,27 @@ class GeminiLiveWorker(QThread):
                 except Exception as ex:
                     print(f"[GeminiLiveWorker] Note timestamp parse warning: {ex}")
 
+            # Mark user interaction active and suppress initial canned greeting
+            if hasattr(self, "client") and self.client:
+                self.client.initial_greeting_sent = True
+                self.client.last_user_speech_time = time.time()
+
             # Inspect both current user speech transcript and note_content for explicit note number or "same note" intent
             user_spoken = f"{getattr(self, 'current_turn_user_transcription', '')} {getattr(self, 'last_user_query', '')}".strip().lower()
             combined_check = f"{user_spoken} {note_content.lower()}".strip()
 
             resolved_note_num = int(note_number) if note_number and int(note_number) > 0 else None
             if not resolved_note_num:
-                num_match = re.search(r'\bnote\s*(?:number|no\.?|#)?\s*(\d+)\b', combined_check)
+                num_match = re.search(r'\b(?:note\s*(?:number|no\.?|#)?\s*(\d+)|\b#\s*(\d+)\b)', combined_check, re.IGNORECASE)
                 if num_match:
-                    resolved_note_num = int(num_match.group(1))
+                    resolved_note_num = int(num_match.group(1) or num_match.group(2))
                 else:
                     ordinal_map = {
-                        "first note": 1, "1st note": 1, "pehle note": 1, "note one": 1,
-                        "second note": 2, "2nd note": 2, "doosre note": 2, "dusre note": 2, "note two": 2,
-                        "third note": 3, "3rd note": 3, "teesre note": 3, "note three": 3,
-                        "fourth note": 4, "4th note": 4, "chauthe note": 4, "note four": 4,
-                        "fifth note": 5, "5th note": 5, "panchve note": 5, "note five": 5,
+                        "first note": 1, "1st note": 1, "pehle note": 1, "pehla note": 1, "note one": 1, "1st": 1, "modati note": 1, "modalati note": 1,
+                        "second note": 2, "2nd note": 2, "doosre note": 2, "doosra note": 2, "dusre note": 2, "dusra note": 2, "note two": 2, "rendo note": 2, "rendava note": 2,
+                        "third note": 3, "3rd note": 3, "teesre note": 3, "teesra note": 3, "note three": 3, "moodo note": 3, "moodava note": 3, "3rd": 3,
+                        "fourth note": 4, "4th note": 4, "chauthe note": 4, "chautha note": 4, "note four": 4, "nalugo note": 4, "nalugava note": 4,
+                        "fifth note": 5, "5th note": 5, "panchve note": 5, "panchva note": 5, "note five": 5, "aidava note": 5, "aidugo note": 5,
                     }
                     for phrase, idx_num in ordinal_map.items():
                         if phrase in combined_check:
@@ -1002,12 +1007,14 @@ class GeminiLiveWorker(QThread):
             "13. PERSONAL STUDY NOTEPAD & NUMBERED NOTES: Call 'add_study_note(note_content, topic, timestamp, create_new, note_number)' ONLY when the student explicitly asks to 'note this down', 'take a note', 'save this point', 'add to my notebook', 'add points to my notes', or in any language (Hindi: 'नोट्स में पॉइंट्स जोड़ दो', Telugu: 'నోట్స్ లో పాయింట్స్ యాడ్ చేయి'). "
             "Do NOT call 'add_study_note' unprompted while merely explaining a video moment until the student asks you to save it to their notes. "
             "NUMBERED NOTE RULES:\n"
-            "- Every note has a sequential number (Note #1, Note #2, Note #3, etc.).\n"
-            "- By default, EVERY time the student asks to add a note without specifying where to add it, set create_new=True and note_number=0 so a brand new numbered note is created!\n"
-            "- Set create_new=False ONLY if the student explicitly says 'add it in the same note' / 'usi note mein' (leave note_number=0), OR if the student specifies a note number like 'add this point in Note 2' (set note_number=2 and create_new=False).\n"
+            "- Every note within each lesson has a sequential number (Note #1, Note #2, Note #3, etc.). Each lesson starts with Note #1 individually.\n"
+            "- When the student says 'add to Note 3', 'Note number 3 lo add chey', or 'teesre note mein add karo', pass note_number=3 and create_new=False.\n"
+            "- When the student says 'add what you just explained' or refers to a recent topic/answer, extract that key concept into note_content cleanly.\n"
+            "- When adding a new note without specifying a note number, pass note_number=0 and create_new=True so the system assigns the next sequential number in this lesson.\n"
             "- When the student asks to check, read, or verify their saved notes, call 'get_study_notes(note_number)' instead of 'capture_user_screen'!\n"
             "- UI LOCATION: The notes live inside the 'Personal Notes' tab on the RIGHT-HAND companion panel directly next to the video player (NEVER say 'Study Notes on the left menu').\n"
-            "- After calling 'add_study_note', warmly confirm the exact Note #<number> in the student's active language!\n"
+            "- CRITICAL NOTE NUMBER CONFIRMATION: The tool 'add_study_note' calculates and returns the exact lesson-scoped note number in its response ('note_number'). When confirming, you MUST speak that EXACT 'note_number' returned by the tool (e.g. if note_number=1, say 'Added [concept] as Note #1 in your notes!'). NEVER guess, continue, or increment note numbers on your own based on previous conversation turns or previous courses, because every lesson strictly restarts at Note #1!\n"
+            "- After calling 'add_study_note', warmly confirm in ONE short natural sentence using that exact note_number in the student's active language, with ZERO unprompted greetings or repetitive preamble!\n"
             "14. CODEBASE KNOWLEDGE GRAPH & ARCHITECTURE (GRAPHIFY):\n"
             "When the student, developer, or user asks about how any part of the project is coded, what files exist, which function handles a feature, or asks to explain the architecture (e.g. 'How does voice streaming work in code?', 'Which file handles the transparent window?', 'Show me the code for echo cancellation'):\n"
             "- IMMEDIATELY call 'search_code_graph(query)' to traverse the 3,300+ node Graphify Knowledge Graph.\n"
@@ -1076,7 +1083,12 @@ class GeminiLiveWorker(QThread):
                 now = time.time()
                 last_greet = getattr(self.client, "last_greeting_timestamp", 0.0)
                 is_ptt = getattr(self.client, "is_push_to_talk", False) or getattr(self.client, "is_ptt_holding", False)
-                if not is_ptt and not getattr(self.client, "initial_greeting_sent", False) and (now - last_greet > 45.0):
+                has_user_speech = bool(
+                    getattr(self, "current_turn_user_transcription", "") or
+                    (now - getattr(self.client, "last_user_speech_time", 0.0) < 45.0) or
+                    getattr(self, "user_speech_detected", False)
+                )
+                if not is_ptt and not has_user_speech and not getattr(self.client, "initial_greeting_sent", False) and (now - last_greet > 60.0):
                     self.client.initial_greeting_sent = True
                     self.client.last_greeting_timestamp = now
 
@@ -1121,9 +1133,9 @@ class GeminiLiveWorker(QThread):
                             await session.send_realtime_input(text=greeting_text)
                     else:
                         await session.send_realtime_input(text=greeting_text)
-                elif is_ptt:
+                elif has_user_speech or is_ptt:
                     self.client.initial_greeting_sent = True
-                    print("[GeminiLiveWorker] Session started via Push-to-Talk: Bypassing canned greeting to respond directly to user speech.")
+                    print("[GeminiLiveWorker] Active user interaction/speech detected. Suppressed initial canned greeting.")
                 else:
                     print("[GeminiLiveWorker] Session active/reconnected. Skipping greeting prompt to preserve conversation context.")
 
@@ -2366,6 +2378,8 @@ class GeminiLiveClient(QObject):
         """Dispatches a text instruction into the active Gemini Live session to speak immediately."""
         if not prompt_text:
             return
+        self.initial_greeting_sent = True
+        self.last_user_speech_time = time.time()
         w = self.worker_thread
         if w and getattr(w, "loop", None) and w.loop.is_running() and getattr(w, "async_queue", None) and self.status == "connected":
             w.suppress_mic_for_prompt = True

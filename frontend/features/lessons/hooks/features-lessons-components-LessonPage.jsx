@@ -1,7 +1,7 @@
 'use client';
 
 import inlineStyles from '@/features/lessons/styles/LessonPage.styles';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Brain, CheckCircle, Circle, ChevronRight, ChevronDown, ChevronUp, Clock,
@@ -65,6 +65,8 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
   const [notes, setNotes] = useState([]);
   const [allCourseNotes, setAllCourseNotes] = useState([]);
   const [noteFilter, setNoteFilter] = useState('lesson'); // 'lesson' | 'course'
+  const [selectedCourseFilter, setSelectedCourseFilter] = useState('all');
+  const [selectedLessonFilter, setSelectedLessonFilter] = useState('all');
   const [recentNoteAlert, setRecentNoteAlert] = useState(null);
   const [newNoteText, setNewNoteText] = useState('');
   const [isPointsSaved, setIsPointsSaved] = useState(false);
@@ -148,13 +150,105 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
     }));
   };
 
+  // Available courses in personal notes for dropdown filter
+  const availableCourses = useMemo(() => {
+    const map = new Map();
+    if (lesson?.courseId) {
+      map.set(lesson.courseId, {
+        id: lesson.courseId,
+        title: lesson.courseTitle || COURSE?.title || 'Current Course',
+        count: 0
+      });
+    }
+    (allCourseNotes || []).forEach((n) => {
+      const cid = n.courseId || 'general';
+      if (!map.has(cid)) {
+        map.set(cid, {
+          id: cid,
+          title: n.courseTitle || (cid === lesson?.courseId ? (lesson.courseTitle || COURSE?.title) : cid) || 'Course Notes',
+          count: 0
+        });
+      }
+      map.get(cid).count++;
+    });
+    return Array.from(map.values());
+  }, [allCourseNotes, lesson?.courseId, lesson?.courseTitle]);
+
+  // Available lessons in personal notes (filtered by selectedCourseFilter if set)
+  const availableLessons = useMemo(() => {
+    const map = new Map();
+    const relevantNotes = (allCourseNotes || []).filter((n) => {
+      if (selectedCourseFilter === 'all') return true;
+      return (n.courseId || 'general') === selectedCourseFilter;
+    });
+
+    if ((selectedCourseFilter === 'all' || selectedCourseFilter === lesson?.courseId) && lesson?.id) {
+      map.set(lesson.id, {
+        id: lesson.id,
+        title: lesson.title || 'Current Lesson',
+        courseId: lesson.courseId || '',
+        count: 0
+      });
+    }
+
+    relevantNotes.forEach((n) => {
+      const lid = n.lessonId || '__unassigned__';
+      if (!map.has(lid)) {
+        map.set(lid, {
+          id: lid,
+          title: n.lessonTitle || (lid === lesson?.id ? lesson.title : lid) || 'General Note',
+          courseId: n.courseId || '',
+          count: 0
+        });
+      }
+      map.get(lid).count++;
+    });
+    return Array.from(map.values());
+  }, [allCourseNotes, selectedCourseFilter, lesson?.id, lesson?.title, lesson?.courseId]);
+
+  // Filtered notes when browsing 'All Notes' tab
+  const filteredAllNotes = useMemo(() => {
+    return (allCourseNotes || []).filter((n) => {
+      if (selectedCourseFilter !== 'all') {
+        const cMatch = (n.courseId || 'general') === selectedCourseFilter || (n.courseTitle || '') === selectedCourseFilter;
+        if (!cMatch) return false;
+      }
+      if (selectedLessonFilter !== 'all') {
+        const lMatch = (n.lessonId || '__unassigned__') === selectedLessonFilter || (n.lessonTitle || '') === selectedLessonFilter;
+        if (!lMatch) return false;
+      }
+      return true;
+    });
+  }, [allCourseNotes, selectedCourseFilter, selectedLessonFilter]);
+
+  // Grouped notes by lesson for structured hierarchical display
+  const groupedAllNotes = useMemo(() => {
+    const groups = new Map();
+    (filteredAllNotes || []).forEach((n) => {
+      const groupKey = String(n.lessonId || n.lessonTitle || '__unassigned__').trim().toLowerCase();
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          lessonId: n.lessonId || '',
+          lessonTitle: n.lessonTitle || (n.lessonId === lesson?.id ? lesson?.title : n.lessonId) || 'Unassigned Notes',
+          courseTitle: n.courseTitle || (n.courseId === lesson?.courseId ? lesson?.courseTitle : n.courseId) || '',
+          notes: []
+        });
+      }
+      groups.get(groupKey).notes.push(n);
+    });
+    return Array.from(groups.values());
+  }, [filteredAllNotes, lesson?.id, lesson?.title, lesson?.courseId, lesson?.courseTitle]);
+
   // Keep Desktop Mascot informed of active lesson & live video timestamp
+  const lastReportedLessonRef = useRef(null);
   const lastReportedTimeRef = useRef(-1);
   useEffect(() => {
     if (typeof window === 'undefined' || !lesson?.id) return;
     const sec = Math.floor(videoCurrentTime || 0);
-    if (lastReportedTimeRef.current !== -1 && Math.abs(sec - lastReportedTimeRef.current) < 3) return;
+    const lessonChanged = lastReportedLessonRef.current !== lesson.id;
+    if (!lessonChanged && lastReportedTimeRef.current !== -1 && Math.abs(sec - lastReportedTimeRef.current) < 3) return;
     lastReportedTimeRef.current = sec;
+    lastReportedLessonRef.current = lesson.id;
     try {
       const bridge = getMascotBridge();
       bridge.sendActivityUpdate('video_lesson', {
@@ -180,20 +274,14 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
       if (status) {
         // Sync study notes from desktop pet SQLite store upon connection
         try {
-          bridge.getStudyNotes({
-            courseId: lesson?.courseId || '',
-            lessonId: lesson?.id || ''
-          });
+          bridge.getStudyNotes({});
         } catch (_) {}
       }
     });
 
     // Request initial notes sync
     try {
-      bridge.getStudyNotes({
-        courseId: lesson?.courseId || '',
-        lessonId: lesson?.id || ''
-      });
+      bridge.getStudyNotes({});
     } catch (_) {}
 
     const unsubMsg = bridge.subscribe((msg) => {
@@ -282,6 +370,7 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
           }
           try {
             localStorage.setItem(`vedika_course_notes_${lesson?.courseId || 'general'}`, JSON.stringify(updated));
+            localStorage.setItem('vedika_all_study_notes', JSON.stringify(updated));
           } catch (_) {}
           return updated;
         });
@@ -296,6 +385,9 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
           // Display newest notes at the top while keeping 1-based chronological noteNumber (#1 = oldest, #N = newest)
           const numberedAll = ensureNumberedNotes([...list].reverse());
           setAllCourseNotes(numberedAll);
+          try {
+            localStorage.setItem('vedika_all_study_notes', JSON.stringify(numberedAll));
+          } catch (_) {}
           const lessonNotes = numberedAll.filter((n) =>
             !n.lessonId ||
             n.lessonId === lesson?.id ||
@@ -321,7 +413,13 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
             } catch (_) {}
             return updated;
           });
-          setAllCourseNotes((prev) => ensureNumberedNotes(prev.filter((n) => String(n.id) !== String(deletedId))));
+          setAllCourseNotes((prev) => {
+            const updated = ensureNumberedNotes(prev.filter((n) => String(n.id) !== String(deletedId)));
+            try {
+              localStorage.setItem('vedika_all_study_notes', JSON.stringify(updated));
+            } catch (_) {}
+            return updated;
+          });
         }
       }
     });
@@ -345,9 +443,14 @@ export function useLessonPageModel({ lesson, completed = {}, onComplete }) {
       const savedLessonNotes = localStorage.getItem(lessonKey);
       if (savedLessonNotes) setNotes(ensureNumberedNotes(JSON.parse(savedLessonNotes)));
 
-      const courseKey = `vedika_course_notes_${lesson?.courseId || 'general'}`;
-      const savedCourseNotes = localStorage.getItem(courseKey);
-      if (savedCourseNotes) setAllCourseNotes(ensureNumberedNotes(JSON.parse(savedCourseNotes)));
+      const savedAll = localStorage.getItem('vedika_all_study_notes');
+      if (savedAll) {
+        setAllCourseNotes(ensureNumberedNotes(JSON.parse(savedAll)));
+      } else {
+        const courseKey = `vedika_course_notes_${lesson?.courseId || 'general'}`;
+        const savedCourseNotes = localStorage.getItem(courseKey);
+        if (savedCourseNotes) setAllCourseNotes(ensureNumberedNotes(JSON.parse(savedCourseNotes)));
+      }
     } catch (e) {
       console.warn("Could not load notes:", e);
     }
@@ -1030,5 +1133,5 @@ Return ONLY a pure valid JSON array with NO markdown, NO code fences, and NO ext
   };
 
   
-return {router,isMobile,isTablet,isStackedLayout,next,setNext,isPlaygroundOpen,setIsPlaygroundOpen,isPdfViewerOpen,setIsPdfViewerOpen,selectedPdfResource,setSelectedPdfResource,videoSeekTime,setVideoSeekTime,videoCurrentTime,setVideoCurrentTime,aiExplainerData,setAiExplainerData,explainerLoading,setExplainerLoading,activeCompanionTab,setActiveCompanionTab,isOverviewModalOpen,setIsOverviewModalOpen,isExpanded,setIsExpanded,isSummaryExpanded,setIsSummaryExpanded,currentTab,panelColor,notesTabColor,chatQuestion,setChatQuestion,chatHistory,setChatHistory,chatLoading,setChatLoading,notes,setNotes,allCourseNotes,setAllCourseNotes,noteFilter,setNoteFilter,recentNoteAlert,setRecentNoteAlert,newNoteText,setNewNoteText,isPointsSaved,setIsPointsSaved,isDictating,setIsDictating,forcePause,setForcePause,recognitionRef,dictationBaseTextRef,isExplainingRef,announcements,setAnnouncements,mod,currentUser,setCurrentUser,isTabletOrSmallDesktop,rPad,aiQuiz,setAiQuiz,aiLoading,setAiLoading,aiErr,setAiErr,aiQuizIdx,setAiQuizIdx,aiQuizAns,setAiQuizAns,officialQuiz,setOfficialQuiz,officialAssignment,setOfficialAssignment,quizAttempts,setQuizAttempts,assignmentSub,setAssignmentSub,isOfficialQuizActive,setIsOfficialQuizActive,officialQuizIdx,setOfficialQuizIdx,officialQuizAnswers,setOfficialQuizAnswers,officialQuizScore,setOfficialQuizScore,submittingQuiz,setSubmittingQuiz,assignmentText,setAssignmentText,submittingAss,setSubmittingAss,assSuccessMsg,setAssSuccessMsg,isMascotConnected,setIsMascotConnected,ensureNumberedNotes,lastReportedTimeRef,handleExplainMoment,handleSaveQuickNote,handleSaveManualNote,handleDeleteNoteById,handleDownloadNote,handleDownloadAllNotes,handleToggleDictation,handleAskQuestion,handleGeneratePracticeQuiz,handleOfficialQuizSubmit,handleOfficialAssignmentSubmit};
+return {router,isMobile,isTablet,isStackedLayout,next,setNext,isPlaygroundOpen,setIsPlaygroundOpen,isPdfViewerOpen,setIsPdfViewerOpen,selectedPdfResource,setSelectedPdfResource,videoSeekTime,setVideoSeekTime,videoCurrentTime,setVideoCurrentTime,aiExplainerData,setAiExplainerData,explainerLoading,setExplainerLoading,activeCompanionTab,setActiveCompanionTab,isOverviewModalOpen,setIsOverviewModalOpen,isExpanded,setIsExpanded,isSummaryExpanded,setIsSummaryExpanded,currentTab,panelColor,notesTabColor,chatQuestion,setChatQuestion,chatHistory,setChatHistory,chatLoading,setChatLoading,notes,setNotes,allCourseNotes,setAllCourseNotes,noteFilter,setNoteFilter,selectedCourseFilter,setSelectedCourseFilter,selectedLessonFilter,setSelectedLessonFilter,availableCourses,availableLessons,filteredAllNotes,groupedAllNotes,recentNoteAlert,setRecentNoteAlert,newNoteText,setNewNoteText,isPointsSaved,setIsPointsSaved,isDictating,setIsDictating,forcePause,setForcePause,recognitionRef,dictationBaseTextRef,isExplainingRef,announcements,setAnnouncements,mod,currentUser,setCurrentUser,isTabletOrSmallDesktop,rPad,aiQuiz,setAiQuiz,aiLoading,setAiLoading,aiErr,setAiErr,aiQuizIdx,setAiQuizIdx,aiQuizAns,setAiQuizAns,officialQuiz,setOfficialQuiz,officialAssignment,setOfficialAssignment,quizAttempts,setQuizAttempts,assignmentSub,setAssignmentSub,isOfficialQuizActive,setIsOfficialQuizActive,officialQuizIdx,setOfficialQuizIdx,officialQuizAnswers,setOfficialQuizAnswers,officialQuizScore,setOfficialQuizScore,submittingQuiz,setSubmittingQuiz,assignmentText,setAssignmentText,submittingAss,setSubmittingAss,assSuccessMsg,setAssSuccessMsg,isMascotConnected,setIsMascotConnected,ensureNumberedNotes,lastReportedTimeRef,handleExplainMoment,handleSaveQuickNote,handleSaveManualNote,handleDeleteNoteById,handleDownloadNote,handleDownloadAllNotes,handleToggleDictation,handleAskQuestion,handleGeneratePracticeQuiz,handleOfficialQuizSubmit,handleOfficialAssignmentSubmit};
 }

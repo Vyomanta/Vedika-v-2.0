@@ -1350,11 +1350,66 @@ class DesktopPetApp(QObject):
                     new_page = payload.get("page") or payload.get("route") or payload.get("activeRoute") or ""
                     prev_page = prev_ctx.get("page") or prev_ctx.get("route") or prev_ctx.get("activeRoute") or ""
 
-                    # Auto-extract lessonId from /lesson/<id> route if not explicitly provided
+                    # Auto-extract lessonId and resolve course/lesson metadata
+                    LESSON_CATALOG = {
+                        "chem_l1": {"courseId": "general-physical-chemistry", "courseTitle": "Chemistry: Atoms, Bonds & Reactions", "lessonTitle": "Electronic Structure & Atomic Orbitals"},
+                        "chem_l2": {"courseId": "general-physical-chemistry", "courseTitle": "Chemistry: Atoms, Bonds & Reactions", "lessonTitle": "Ionic & Covalent Chemical Bonds"},
+                        "chem_l3": {"courseId": "general-physical-chemistry", "courseTitle": "Chemistry: Atoms, Bonds & Reactions", "lessonTitle": "Balancing Reactions & Stoichiometry"},
+                        "chem_l4": {"courseId": "general-physical-chemistry", "courseTitle": "Chemistry: Atoms, Bonds & Reactions", "lessonTitle": "Acids, Bases & Titration Equilibrium"},
+                        "bio_l1": {"courseId": "cellular-biology-genetics", "courseTitle": "Biology: Cells & Molecular Genetics", "lessonTitle": "Cell Organelles & Membrane Transport"},
+                        "bio_l2": {"courseId": "cellular-biology-genetics", "courseTitle": "Biology: Cells & Molecular Genetics", "lessonTitle": "Cellular Respiration & ATP Synthesis"},
+                        "bio_l3": {"courseId": "cellular-biology-genetics", "courseTitle": "Biology: Cells & Molecular Genetics", "lessonTitle": "DNA Replication & Protein Synthesis"},
+                        "bio_l4": {"courseId": "cellular-biology-genetics", "courseTitle": "Biology: Cells & Molecular Genetics", "lessonTitle": "Mendelian Genetics & Heredity"},
+                        "phys_l1": {"courseId": "physics-mechanics-fundamentals", "courseTitle": "Physics: Mechanics & Energy", "lessonTitle": "1D Kinematics & Velocity Vectors"},
+                        "phys_l2": {"courseId": "physics-mechanics-fundamentals", "courseTitle": "Physics: Mechanics & Energy", "lessonTitle": "Newton's Laws of Motion & Forces"},
+                        "phys_l3": {"courseId": "physics-mechanics-fundamentals", "courseTitle": "Physics: Mechanics & Energy", "lessonTitle": "Work, Kinetic Energy & Potential Energy"},
+                        "phys_l4": {"courseId": "physics-mechanics-fundamentals", "courseTitle": "Physics: Mechanics & Energy", "lessonTitle": "Universal Gravitation & Orbital Motion"},
+                        "math_l1": {"courseId": "calculus-advanced-mathematics", "courseTitle": "Mathematics: Calculus & Analysis", "lessonTitle": "Limits & Continuity Fundamentals"},
+                        "math_l2": {"courseId": "calculus-advanced-mathematics", "courseTitle": "Mathematics: Calculus & Analysis", "lessonTitle": "The Derivative & Rates of Change"},
+                        "math_l3": {"courseId": "calculus-advanced-mathematics", "courseTitle": "Mathematics: Calculus & Analysis", "lessonTitle": "Definite & Indefinite Integrals"},
+                        "math_l4": {"courseId": "calculus-advanced-mathematics", "courseTitle": "Mathematics: Calculus & Analysis", "lessonTitle": "Fundamental Theorem of Calculus"},
+                        "py_l1": {"courseId": "python-programming-essentials", "courseTitle": "Python Programming Essentials", "lessonTitle": "Python Syntax, Variables & Types"},
+                        "py_l2": {"courseId": "python-programming-essentials", "courseTitle": "Python Programming Essentials", "lessonTitle": "Lists, Tuples & Dictionaries"},
+                        "py_l3": {"courseId": "python-programming-essentials", "courseTitle": "Python Programming Essentials", "lessonTitle": "Conditional Statements & Loops"},
+                        "py_l4": {"courseId": "python-programming-essentials", "courseTitle": "Python Programming Essentials", "lessonTitle": "Functions & Modular Code"},
+                        "web_l1": {"courseId": "modern-web-development-html-css", "courseTitle": "Web Development: HTML & CSS", "lessonTitle": "HTML5 Semantic Structure"},
+                        "web_l2": {"courseId": "modern-web-development-html-css", "courseTitle": "Web Development: HTML & CSS", "lessonTitle": "CSS3 Flexbox & Grid Layouts"}
+                    }
+
                     if new_page.startswith("/lesson/"):
                         extracted_lid = new_page.split("/lesson/", 1)[1].split("?")[0].split("#")[0].strip("/")
                         if extracted_lid and not payload.get("lessonId"):
                             payload["lessonId"] = extracted_lid
+                    elif "/labs/chemistry" in new_page or "/vedika-labs/chemistry" in new_page:
+                        payload.setdefault("courseId", "general-physical-chemistry")
+                        payload.setdefault("courseTitle", "Chemistry: Atoms, Bonds & Reactions")
+                        payload.setdefault("lessonId", "chem_lab")
+                        payload.setdefault("lessonTitle", "Chemistry Lab Experiments")
+                    elif "/labs/biology" in new_page or "/vedika-labs/biology" in new_page:
+                        payload.setdefault("courseId", "cellular-biology-genetics")
+                        payload.setdefault("courseTitle", "Biology: Cells & Molecular Genetics")
+                        payload.setdefault("lessonId", "bio_lab")
+                        payload.setdefault("lessonTitle", "Biology Lab Experiments")
+                    elif "/labs/physics" in new_page or "/vedika-labs/physics" in new_page:
+                        payload.setdefault("courseId", "physics-mechanics-fundamentals")
+                        payload.setdefault("courseTitle", "Physics: Mechanics & Energy")
+                        payload.setdefault("lessonId", "phys_lab")
+                        payload.setdefault("lessonTitle", "Physics Lab Experiments")
+                    elif "/labs/math" in new_page or "/vedika-labs/math" in new_page:
+                        payload.setdefault("courseId", "calculus-advanced-mathematics")
+                        payload.setdefault("courseTitle", "Mathematics: Calculus & Analysis")
+                        payload.setdefault("lessonId", "math_lab")
+                        payload.setdefault("lessonTitle", "Mathematics Lab Experiments")
+
+                    target_lid = payload.get("lessonId")
+                    if target_lid and target_lid in LESSON_CATALOG:
+                        cat_info = LESSON_CATALOG[target_lid]
+                        if not payload.get("courseId"):
+                            payload["courseId"] = cat_info["courseId"]
+                        if not payload.get("courseTitle"):
+                            payload["courseTitle"] = cat_info["courseTitle"]
+                        if not payload.get("lessonTitle"):
+                            payload["lessonTitle"] = cat_info["lessonTitle"]
 
                     # If staying on the same lesson or page, preserve rich lesson/course metadata from previous context
                     same_lesson = (
